@@ -10,7 +10,7 @@ from TMaze_new.TMaze_new_src.utils import seeds_list
 from TMaze_new.TMaze_new_src.train import FactorScheduler
 import torch.nn as nn
 
-def train(model, optimizer, scheduler, raw_model, new_segment, epochs_counter, segments_count, wandb_step, ckpt_path, config, train_dataloader, val_dataloader):
+def train(model, optimizer, scheduler, raw_model, new_segment, epochs_counter, segments_count, wandb_step, ckpt_path, config, train_dataloader, val_dataloader, max_n_final):
     
     cos = nn.CosineSimilarity(dim=-1, eps=1e-6)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -192,7 +192,8 @@ def train(model, optimizer, scheduler, raw_model, new_segment, epochs_counter, s
                                        "val_loss": val_loss_all.item(), 
                                        "val_accuracy": model.accuracy, 
                                        "val_last_acc": model.last_acc,
-                                       "learning_rate": lr})
+                                       "learning_rate": lr,
+                                       "epoch": epoch})
                     if model.flag == 1:
                         pbar.set_description(f"[val] ep {epoch+1} it {it} tTotal {train_loss_all.item():.2f} vTotal {val_loss_all.item():.2f} lr {lr:e}")
 
@@ -248,6 +249,46 @@ def train(model, optimizer, scheduler, raw_model, new_segment, epochs_counter, s
 
                     if wwandb:
                         wandb.log({"Success_rate": suc_rate, "Mean_D[time]": ep_time})
+
+        # ! INFERENCE AT ALL LENGHTS AT LAST EPOCH !!!
+        if epoch == config["training_config"]["epochs"] - 1 and segments_count == max_n_final:
+            for _segments in [1, 2, 3, 5, 7, 9, 12, 16, 20, 25, 30]:
+                _episode_timeout = 30*_segments
+                _corridor_length = 30*_segments - 2
+                if config["training_config"]["last_inference"]:
+                    model.eval()
+                    with torch.no_grad():
+                        goods, bads = 0, 0
+                        timers = []
+                        rewards = []
+                        seeds = seeds_list
+                        pbar2 = range(len(seeds))
+                        for indx, iii in enumerate(pbar2):
+                            episode_return, act_list, t, _ , delta_t, attn_map = get_returns_TMaze(model=model, ret=config["data_config"]["desired_reward"], 
+                                                                                                seed=seeds[iii], 
+                                                                                                episode_timeout=_episode_timeout,
+                                                                                                corridor_length=_corridor_length, 
+                                                                                                context_length=config["training_config"]["context_length"],
+                                                                                                device=device, act_dim=config["model_config"]["ACTION_DIM"],
+                                                                                                config=config, create_video=False)
+                            if episode_return == config["data_config"]["desired_reward"]:
+                                goods += 1
+                            else:
+                                bads += 1
+                            timers.append(delta_t)
+                            rewards.append(episode_return)
+                            
+                            pbar.set_description(f"[final inference| S: {_segments} | {indx+1}/{len(seeds)}]")
+                                
+                        suc_rate = goods / (goods + bads)
+                        ep_time = np.mean(timers)
+
+                        if wwandb:
+                            wandb.log({f"Success_rate_S_{_segments}": suc_rate, f"Mean_D[time]_S_{_segments}": ep_time})
+
+
+
+
         
             model.train()
             wandb_step += 1 
