@@ -38,7 +38,7 @@ with open("VizDoom/VizDoom_src/config.yaml") as f:
 
 
 
-# python3 VizDoom/VizDoom_src/train_vizdoom.py --model_mode 'RATE' --arch_mode 'TrXL' --ckpt_folder 'trash' --text 'RATE'
+# python3 VizDoom/VizDoom_src/train_vizdoom.py --model_mode 'RATE' --arch_mode 'TrXL' --ckpt_folder 'test' --text 'RATE' --nmt 5 --mem_len 2 --n_head_ca 2
     
 
 
@@ -52,6 +52,11 @@ def create_args():
     parser.add_argument('--ckpt_folder',    type=str, default='ckpt',  help='Checkpoints directory')
     parser.add_argument('--text',           type=str, default='',      help='Short text description of rouns group')
 
+    parser.add_argument('--nmt',       type=int, default=5,       help='')
+    parser.add_argument('--mem_len',       type=int, default=2,       help='')
+    parser.add_argument('--n_head_ca',       type=int, default=2,       help='')
+    parser.add_argument('--mrv_act',       type=str, default='relu',       help='["no_act", "relu", "leaky_relu", "elu", "tanh"]')
+
     return parser
 
 if __name__ == '__main__':
@@ -64,6 +69,10 @@ if __name__ == '__main__':
     arch_mode = args.arch_mode
     ckpt_folder = args.ckpt_folder
     TEXT_DESCRIPTION = args.text
+    mem_len = args.mem_len
+    nmt = args.nmt
+    n_head_ca = args.n_head_ca
+    mrv_act = args.mrv_act
 
     config["model_mode"] = model_mode
     config["arctitecture_mode"] = arch_mode
@@ -90,8 +99,11 @@ if __name__ == '__main__':
 
         """ MODEL MODE """
         if config["model_mode"] == "RATE": 
-            config["model_config"]["mem_len"] = 2
+            config["model_config"]["mem_len"] = mem_len
             config["model_config"]["mem_at_end"] = True
+            config["model_config"]["num_mem_tokens"] = nmt
+            config["model_config"]["n_head_ca"] = n_head_ca
+            config["model_config"]["mrv_act"] = mrv_act
             max_length = config["training_config"]["sections"]*config["training_config"]["context_length"]
         
 
@@ -99,14 +111,16 @@ if __name__ == '__main__':
             config["model_config"]["mem_len"] = 0
             config["model_config"]["mem_at_end"] = False
             config["model_config"]["num_mem_tokens"] = 0
+            config["model_config"]["n_head_ca"] = 0
             config["training_config"]["context_length"] = config["training_config"]["context_length"] * config["training_config"]["sections"]
             config["training_config"]["sections"] = 1
             max_length = config["training_config"]["context_length"]
 
         elif config["model_mode"] == "DTXL":
-            config["model_config"]["mem_len"] = 2
+            config["model_config"]["mem_len"] = mem_len
             config["model_config"]["mem_at_end"] = False
-            config["model_config"]["num_mem_tokens"] = 0 
+            config["model_config"]["num_mem_tokens"] = 0
+            config["model_config"]["n_head_ca"] = 0
             config["training_config"]["context_length"] = config["training_config"]["context_length"] * config["training_config"]["sections"]
             config["training_config"]["sections"] = 1
             max_length = config["training_config"]["context_length"]
@@ -114,16 +128,22 @@ if __name__ == '__main__':
         elif config["model_mode"] == "RATEM":
             config["model_config"]["mem_len"] = 0
             config["model_config"]["mem_at_end"] = True
+            config["model_config"]["num_mem_tokens"] = nmt
+            config["model_config"]["n_head_ca"] = n_head_ca
+            config["model_config"]["mrv_act"] = mrv_act
             max_length = config["training_config"]["sections"]*config["training_config"]["context_length"]
 
         elif config["model_mode"] == "RATE_wo_nmt":
             print("Custom Mode!!! RATE wo nmt")
-            config["model_config"]["mem_len"] = 2
+            config["model_config"]["mem_len"] = mem_len
             config["model_config"]["mem_at_end"] = False
             config["model_config"]["num_mem_tokens"] = 0
+            config["model_config"]["n_head_ca"] = 0
             max_length = config["training_config"]["sections"]*config["training_config"]["context_length"]
         
-
+        if nmt == 0:
+            config["model_config"]["mem_at_end"] = False
+            
         print(f"Selected Model: {config['model_mode']}")  
 
         mini_text = f"arch_mode_{config['arctitecture_mode']}"
