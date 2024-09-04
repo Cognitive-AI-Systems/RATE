@@ -44,7 +44,8 @@ class MemTransformerLM(nn.Module):
                  num_classes_ass_ret=16,
                  mode='mujoco',
                  use_gate=False,
-                 use_stable_version=False):
+                 use_stable_version=False,
+                 mrv_act='relu'):
         
         super(MemTransformerLM, self).__init__()
 
@@ -69,6 +70,20 @@ class MemTransformerLM(nn.Module):
         self.embed_timestep = nn.Embedding(max_ep_len, d_embed)
         self.embed_ln = nn.LayerNorm(d_embed)
         self.ret_emb = nn.Linear(1, d_embed)
+
+        if mrv_act == 'relu':
+            self.mrv_act = F.relu
+        elif mrv_act == 'leaky_relu':
+            self.mrv_act = F.leaky_relu
+        elif mrv_act == 'elu':
+            self.mrv_act == F.elu
+        elif mrv_act == 'tanh':
+            self.mrv_act = F.tanh
+        elif mrv_act == 'no_act':
+            self.mrv_act = None
+        else:
+            raise NotImplementedError('This MRV activation is not studied')
+        
         
         if self.mode in ['mujoco','tmaze', 'aar']:
             self.state_encoder = nn.Sequential(
@@ -328,18 +343,20 @@ class MemTransformerLM(nn.Module):
             beg_idx = max(0, end_idx - self.mem_len)
             for i in range(len(hids)):
                 cat = torch.cat([mems[i], hids[i]], dim=0)
+                # print(mems[i].shape, hids[i].shape, cat.shape, beg_idx, end_idx)
                 new_mems.append(cat[beg_idx:end_idx].detach())
-
+                
         return new_mems
 
     def _forward(self, word_emb, mems=None, mem_tokens=None):
 
         #word_emb = self.word_emb(dec_inp)
         bsz, qlen, _ = word_emb.size()
-        #print(word_emb.shape)
+        # print(qlen)
         word_emb = word_emb.permute(1,0,2)
 
         mlen = mems[0].size(0) if mems is not None else 0
+        # print(mlen)
         #mlen = 0
         # print("mlen1", mlen)
         #print(mem_tokens.shape, word_emb.shape)
@@ -348,7 +365,7 @@ class MemTransformerLM(nn.Module):
             #print(mem_tokens.shape, word_emb.shape)
             #print(mem_tokens.shape, word_emb.shape, " Shapes here")
             word_emb = torch.cat((mem_tokens, word_emb), dim=0)
-            #print(word_emb.shape)
+            # print(word_emb.shape)
             if self.mem_at_end:
                 word_emb = torch.cat((word_emb, mem_tokens), dim=0) # shape num_mem_tokens + 3*context_length + num_mem_tokens, bs, emb_dim
                 
@@ -377,11 +394,11 @@ class MemTransformerLM(nn.Module):
                     dec_attn_mask[-self.num_mem_tokens:, -self.num_mem_tokens:] = 0
                     dec_attn_mask[-self.num_mem_tokens:, :mlen] = 1 - int(self.read_mem_from_cache)
             dec_attn_mask = dec_attn_mask[:,:,None]
-            
         hids = []
         if self.attn_type == 0: # default
             pos_seq = torch.arange(klen-1, -1, -1.0, device=word_emb.device, 
                                    dtype=word_emb.dtype)
+
             #print("klen", klen)
             #print("pos_seq", pos_seq.shape)
             if self.clamp_len > 0:
@@ -392,13 +409,16 @@ class MemTransformerLM(nn.Module):
             core_out = self.drop(word_emb) # self.drop(word_emb) word_emb
             pos_emb = self.drop(pos_emb) #self.drop(pos_emb) pos_emb
 
+
             hids.append(core_out)
             for i, layer in enumerate(self.layers):
                 mems_i = None if mems is None else mems[i]
+                # print('*****', mems_i.shape)
                 core_out, self.attn_map = layer(core_out, pos_emb, self.r_w_bias,
                                               self.r_r_bias, dec_attn_mask=dec_attn_mask, mems=mems_i)
                 
                 hids.append(core_out)
+                # print('!!!', core_out.shape)
         elif self.attn_type == 1: # learnable
             core_out = self.drop(word_emb)
             hids.append(core_out)
@@ -454,7 +474,8 @@ class MemTransformerLM(nn.Module):
         core_out = self.drop(core_out)
     
         new_mems = self._update_mems(hids, mems, qlen, mlen)             #(hids, mems, qlen, mlen) #(hids, mems, mlen, qlen) original
-
+        # len(new_mems) = n_layer + 1, new_mems[i].shape = 9x64x32
+        # print(core_out.shape, len(new_mems), new_mems[0].shape)
         return core_out, new_mems
     
     def forward(self, states, actions, rtgs, target, timesteps, *mems, mem_tokens=None, masks=None): # data
@@ -507,7 +528,12 @@ class MemTransformerLM(nn.Module):
                     mem_tokens_write = hidden[:, -tgt_len-num_mem:-tgt_len, :]
 
                 if self.n_head_ca != 0:
-                    new_mem_tokens = F.relu(hidden[:, -num_mem:, :])
+                    # new_mem_tokens = F.relu(hidden[:, -num_mem:, :])
+                    if self.mrv_act is not None:
+                        new_mem_tokens = self.mrv_act(hidden[:, -num_mem:, :])
+                    else:
+                        new_mem_tokens = hidden[:, -num_mem:, :]
+
                     mem_tokens = mem_tokens.permute(1,0,2)
                     mask_mem_mem = torch.ones((new_mem_tokens.shape[1], new_mem_tokens.shape[1]), dtype=torch.bool).to(new_mem_tokens.device)
                     mem_tokens_write, _ = self.mha_mem_to_mem(mem_tokens, new_mem_tokens, new_mem_tokens, attn_mask=mask_mem_mem)
@@ -593,7 +619,12 @@ class MemTransformerLM(nn.Module):
                     mem_tokens_write = hidden[:, -tgt_len-num_mem:-tgt_len, :]
 
                 if self.n_head_ca != 0:
-                    new_mem_tokens = F.relu(hidden[:, -num_mem:, :])
+                    # new_mem_tokens = F.relu(hidden[:, -num_mem:, :])
+                    if self.mrv_act is not None:
+                        new_mem_tokens = self.mrv_act(hidden[:, -num_mem:, :])
+                    else:
+                        new_mem_tokens = hidden[:, -num_mem:, :]
+
                     mem_tokens = mem_tokens.permute(1,0,2)
                     mask_mem_mem = torch.ones((new_mem_tokens.shape[1], new_mem_tokens.shape[1]), dtype=torch.bool).to(new_mem_tokens.device)
                     mem_tokens_write, _ = self.mha_mem_to_mem(mem_tokens, new_mem_tokens, new_mem_tokens, attn_mask=mask_mem_mem)
