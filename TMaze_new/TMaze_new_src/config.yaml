@@ -1,10 +1,10 @@
 wandb_config:
-    project_name: "v2-RATE-TMaze" #"CA-RATE_TMaze"
-    wwandb: False
+    project_name: "v3-RATE-TMaze" #"CA-RATE_TMaze"
+    wwandb: True
 
 data_config:
   # noise augmentation of data
-  multiplier: 1000
+  multiplier: 1000 # 1000
   # number of hint steps
   hint_steps: 1
   # cutting previous data in half when adding new segment during training. 
@@ -22,13 +22,14 @@ training_config:
   weight_decay: 0.1
   batch_size: 64 # 64
   warmup_steps: 100  # 100
-  grad_norm_clip: 1.0 # 0.25 
-  epochs: 50 #250
+  grad_norm_clip: 1.0 # 1.0
+  epochs: 50 # 50
   ckpt_epoch: 10
   use_erl_stop: False
   coef: 0.0
   # inference during training
-  online_inference: True
+  online_inference: False
+  last_inference: True
   # ! WARNING ! IMPORTANT INFO
   # * IF YOU WANT TO TRAIN DT WITH context_length=90 (or if you want to train RATE with
   # * 3 segments and context 30), set context_length=30 and sections=3
@@ -43,23 +44,19 @@ model_config:
   n_token: 10000 # vocab_size
   n_layer: 8 # 8 
   n_head: 10 # 10
-  n_head_ca: 2
-  d_model: 64 # 256
-  d_head: 64 # 128 # divider of d_model
-  d_inner: 64 # 512 # > d_model
-  dropout: 0.05 # 0.1  
-  dropatt: 0.0 # 0.05
-  mem_len: 2
-  ext_len: 1
+  n_head_ca: 1 # 1
+  d_model: 64 # 64
+  d_head: 64 # 64
+  d_inner: 64 # 64
+  dropout: 0.05 # 0.05
+  dropatt: 0.0 # 0.0
+  mem_len: 0 # 0
+  ext_len: 0 # 0
   tie_weight: False
   num_mem_tokens: 5 # 5 d_head * nmt = diff params
   mem_at_end: True
+  mrv_act: 'relu'
 
 online_inference_config:
   episode_timeout: 
   corridor_length: 
-
-
-
-
-
