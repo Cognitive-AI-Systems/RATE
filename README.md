@@ -62,6 +62,7 @@ We would deeply appreciate it if our paper could be cited:
 
 MIT License
 
+Copyright (c) 2024 Cognitive-AI-Systems
 
 
 
