@@ -41,6 +41,11 @@ def create_args():
     parser.add_argument('--ckpt_folder',    type=str, default='ckpt',  help='Checkpoints directory')
     parser.add_argument('--text',           type=str, default='',      help='Short text description of rouns group')
 
+    parser.add_argument('--nmt',       type=int, default=5,       help='')
+    parser.add_argument('--mem_len',       type=int, default=2,       help='')
+    parser.add_argument('--n_head_ca',       type=int, default=2,       help='')
+    parser.add_argument('--mrv_act',       type=str, default='relu',       help='["no_act", "relu", "leaky_relu", "elu", "tanh"]')
+
     return parser
 
 if __name__ == '__main__':
@@ -57,6 +62,10 @@ if __name__ == '__main__':
     max_n_final = args.max_n_final
     ckpt_folder = args.ckpt_folder
     TEXT_DESCRIPTION = args.text
+    mem_len = args.mem_len
+    nmt = args.nmt
+    n_head_ca = args.n_head_ca
+    mrv_act = args.mrv_act
 
     SEGMENT_LENGTH = config["training_config"]["context_length"]
 
@@ -86,32 +95,48 @@ if __name__ == '__main__':
 
         """ MODEL MODE """
         if config["model_mode"] == "RATE": 
-            config["model_config"]["mem_len"] = 2
+            config["model_config"]["mem_len"] = mem_len
             config["model_config"]["mem_at_end"] = True
+            config["model_config"]["num_mem_tokens"] = nmt
+            config["model_config"]["n_head_ca"] = n_head_ca
+            config["model_config"]["mrv_act"] = mrv_act
 
         elif config["model_mode"] == "DT":
             config["model_config"]["mem_len"] = 0
             config["model_config"]["mem_at_end"] = False
             config["model_config"]["num_mem_tokens"] = 0
+            config["model_config"]["n_head_ca"] = 0
             config["training_config"]["context_length"] = config["training_config"]["context_length"] * config["training_config"]["sections"]
             config["training_config"]["sections"] = 1
+            max_length = config["training_config"]["context_length"]
 
         elif config["model_mode"] == "DTXL":
-            config["model_config"]["mem_len"] = 2
+            config["model_config"]["mem_len"] = mem_len
             config["model_config"]["mem_at_end"] = False
             config["model_config"]["num_mem_tokens"] = 0
+            config["model_config"]["n_head_ca"] = 0
             config["training_config"]["context_length"] = config["training_config"]["context_length"] * config["training_config"]["sections"]
             config["training_config"]["sections"] = 1
+            max_length = config["training_config"]["context_length"]
 
         elif config["model_mode"] == "RATEM":
             config["model_config"]["mem_len"] = 0
             config["model_config"]["mem_at_end"] = True
+            config["model_config"]["num_mem_tokens"] = nmt
+            config["model_config"]["n_head_ca"] = n_head_ca
+            config["model_config"]["mrv_act"] = mrv_act
+            max_length = config["training_config"]["sections"]*config["training_config"]["context_length"]
 
         elif config["model_mode"] == "RATE_wo_nmt":
             print("Custom Mode!!! RATE wo nmt")
-            config["model_config"]["mem_len"] = 2
+            config["model_config"]["mem_len"] = mem_len
             config["model_config"]["mem_at_end"] = False
             config["model_config"]["num_mem_tokens"] = 0
+            config["model_config"]["n_head_ca"] = 0
+            max_length = config["training_config"]["sections"]*config["training_config"]["context_length"]
+        
+        if nmt == 0:
+            config["model_config"]["mem_at_end"] = False
 
         print(f"Selected Model: {config['model_mode']}")  
 
@@ -177,7 +202,7 @@ if __name__ == '__main__':
                 new_segment = True
                 model, wandb_step, optimizer, scheduler, raw_model, epochs_counter = train(model, optimizer, scheduler, 
                                                                         raw_model, new_segment, epochs_counter, n_final, wandb_step, ckpt_path, config,
-                                                                        train_dataloader, val_dataloader)
+                                                                        train_dataloader, val_dataloader, max_n_final)
                 del train_dataloader
                 del val_dataloader
                 
@@ -219,7 +244,7 @@ if __name__ == '__main__':
             new_segment = True
             model, wandb_step, optimizer, scheduler, raw_model, epochs_counter = train(model, optimizer, scheduler, 
                                                                     raw_model, new_segment, epochs_counter, max_n_final, wandb_step, ckpt_path, config,
-                                                                    train_dataloader, val_dataloader)
+                                                                    train_dataloader, val_dataloader, max_n_final)
             del train_dataloader
             del val_dataloader
         
