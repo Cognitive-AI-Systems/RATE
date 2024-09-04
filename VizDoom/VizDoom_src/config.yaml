@@ -18,7 +18,7 @@ training_config:
   final_tokens: 10000000
   grad_norm_clip: 1.0 # 1.0
   epochs: 100 #250
-  ckpt_epoch: 2
+  ckpt_epoch: 2 # 2
   use_erl_stop: False
   # inference during training
   online_inference: True
@@ -42,11 +42,12 @@ model_config:
   d_inner: 128 # 128 # > d_model
   dropout: 0.2 # 0.2
   dropatt: 0.05 # 0.05
-  mem_len: 2
-  ext_len: 1
+  mem_len: 300
+  ext_len: 0
   tie_weight: False
   num_mem_tokens: 5 # 5 d_head * nmt = diff params
   mem_at_end: True
+  mrv_act: 'relu'
 
 online_inference_config:
   use_argmax: False # False
